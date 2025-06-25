@@ -21,10 +21,11 @@ import (
 	"errors"
 	"math/big"
 
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
-	"github.com/holiman/uint256"
 )
 
 // txJSON is the JSON representation of transactions.
@@ -507,6 +508,36 @@ func (tx *Transaction) UnmarshalJSON(input []byte) error {
 			}
 		}
 
+	case OptimismDepositTxType:
+		if dec.AccessList != nil || dec.MaxFeePerGas != nil ||
+			dec.MaxPriorityFeePerGas != nil {
+			return errors.New("unexpected field(s) in deposit transaction")
+		}
+		if dec.GasPrice != nil && dec.GasPrice.ToInt().Cmp(common.Big0) != 0 {
+			return errors.New("deposit transaction GasPrice must be 0")
+		}
+		if (dec.V != nil && dec.V.ToInt().Cmp(common.Big0) != 0) ||
+			(dec.R != nil && dec.R.ToInt().Cmp(common.Big0) != 0) ||
+			(dec.S != nil && dec.S.ToInt().Cmp(common.Big0) != 0) {
+			return errors.New("deposit transaction signature must be 0 or unset")
+		}
+		var itx OptimismDepositTx
+		inner = &itx
+		if dec.To != nil {
+			itx.To = dec.To
+		}
+		if dec.Gas == nil {
+			return errors.New("missing required field 'gas' for txdata")
+		}
+		itx.Gas = uint64(*dec.Gas)
+		if dec.Value == nil {
+			return errors.New("missing required field 'value' in transaction")
+		}
+		itx.Value = (*big.Int)(dec.Value)
+		if dec.Input == nil {
+			return errors.New("missing required field 'input' in transaction")
+		}
+		itx.Data = *dec.Input
 	default:
 		return ErrTxTypeNotSupported
 	}
